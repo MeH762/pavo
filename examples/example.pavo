@@ -1,0 +1,9 @@
+let a := 3;
+let b := 1 + 1;
+
+print a;
+print b;
+
+if a > 2 {
+    print b;
+}

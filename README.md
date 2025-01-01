@@ -26,6 +26,11 @@ if !a {
    print 0;
 }
 
+#logical operations:
+let p := 0 | 1;
+let q := p & 1;
+q = !q;
+
 #loops:
 let i := 0;
 loop i < 9 {

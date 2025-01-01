@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <time.h>
 
 // Maximum lengths for various components
 #define MAX_TOKEN_LEN 256
@@ -31,6 +32,9 @@ typedef enum {
     TOKEN_IF,
     TOKEN_LBRACE,
     TOKEN_RBRACE,
+    TOKEN_RETURN,
+    TOKEN_LOOP,
+    TOKEN_BREAK,
 } TokenType;
 
 typedef enum{//0 false 1 true
@@ -57,6 +61,10 @@ typedef enum {
     NODE_COMPARE,
     NODE_LOGIC,
     NODE_IF_STMT,
+    NODE_BLOCK,
+    NODE_RETURN,
+    NODE_LOOP,
+    NODE_BREAK,
 } NodeType;
 
 // AST node structure
@@ -67,6 +75,7 @@ typedef struct ASTNode {
     struct ASTNode* right;      // Used for assignment right side or print expression
     struct ASTNode* next;
     struct ConditionalBranch* cond_chain;
+    struct ASTNode* condition; //loop condition
 } ASTNode;
 
 typedef struct ConditionalBranch {
@@ -133,8 +142,16 @@ void advance() {
 
 // Skip whitespace
 void skip_whitespace() {
-    while (current_char() && isspace(current_char())) {
-        advance();
+    while (current_char()) {
+        if (isspace(current_char())){
+            advance();
+        } else if (current_char()=='#'){
+            while (current_char() && current_char() != '\n'){
+                advance();
+            }
+        } else {
+            break;
+        }
     }
 }
 
@@ -174,7 +191,13 @@ Token get_next_token() {
         token.value[i] = '\0';
 
         // Check for keywords
-        if (strcmp(token.value, "let") == 0) {
+        if (strcmp(token.value, "return")==0){
+            token.type = TOKEN_RETURN;
+        } else if (strcmp(token.value, "loop")==0){
+            token.type = TOKEN_LOOP;
+        } else if (strcmp(token.value, "break")==0){
+            token.type = TOKEN_BREAK;
+        } else if (strcmp(token.value, "let") == 0) {
             token.type = TOKEN_LET;
         } else if (strcmp(token.value, "print") == 0) {
             token.type = TOKEN_PRINT;
@@ -331,6 +354,7 @@ void eat(TokenType type) {
 // Forward declarations for parser functions
 ASTNode* parse_expression();
 ASTNode* parse_statement();
+ASTNode* parse_block();
 
 // Parse a primary expression (number or variable)
 ASTNode* parse_primary() {
@@ -348,6 +372,9 @@ ASTNode* parse_primary() {
             strcpy(node->value, current_token.value);
             eat(TOKEN_IDENTIFIER);
             return node;
+        }
+        case TOKEN_LBRACE: {
+            return parse_block();
         }
         default:
             parser_error();
@@ -509,6 +536,24 @@ ASTNode* parse_statement() {
             node->cond_chain = branch;
             return node;
         }
+        case TOKEN_LOOP: {
+            eat(TOKEN_LOOP);
+
+            node = create_node(NODE_LOOP);
+
+            if (current_token.type != TOKEN_LBRACE){
+                node->condition = parse_expression();
+            }
+
+            node->right = parse_block();
+            return node;
+        }
+        case TOKEN_BREAK: {
+            node = create_node(NODE_BREAK);
+            eat(TOKEN_BREAK);
+            eat(TOKEN_SEMICOLON);
+            return node;
+        }
         default:
             parser_error();
             return NULL;  // To satisfy compiler
@@ -518,13 +563,31 @@ ASTNode* parse_statement() {
 ASTNode* parse_block(){ //if else
     eat(TOKEN_LBRACE);
 
+    ASTNode* block = create_node(NODE_BLOCK);
     ASTNode* first_stmt = NULL;
     ASTNode* current = NULL;
 
     while (current_token.type != TOKEN_RBRACE && current_token.type != TOKEN_EOF){
+        if (current_token.type == TOKEN_RETURN){
+            eat(TOKEN_RETURN);
+            ASTNode* ret = create_node(NODE_RETURN);
+            ret->right = parse_expression();
+            eat(TOKEN_SEMICOLON);
+
+            if (first_stmt==NULL){
+                first_stmt = ret;
+            } else {
+                current->next = ret;
+            }
+
+            block->right = first_stmt;
+            eat(TOKEN_RBRACE);
+            return block;
+        }
+
         ASTNode* stmt = parse_statement();
 
-        if (first_stmt==NULL){
+        if (first_stmt==NULL) {
             first_stmt = stmt;
             current = stmt;
         } else {
@@ -533,6 +596,7 @@ ASTNode* parse_block(){ //if else
         }
     }
 
+    block->right = first_stmt;
     eat(TOKEN_RBRACE);
     return first_stmt;
 }
@@ -682,6 +746,50 @@ int interpret_node(ASTNode* node) {
             }
             return 0;
         }
+
+        case NODE_BLOCK: {
+            ASTNode* stmt = node->right;
+            int last_value = 0;
+
+            while (stmt != NULL){
+                last_value = interpret_node(stmt);
+                if (stmt->type == NODE_RETURN) {
+                    return last_value;
+                }
+                stmt = stmt->next;
+            }
+
+            return last_value;
+        }
+
+        case NODE_RETURN: {
+            return interpret_node(node->right);
+        }
+
+        case NODE_LOOP: {
+            while (1) {
+                if (node->condition != NULL){
+                    if (interpret_node(node->condition)==0){
+                        break;
+                    }
+                }
+
+                ASTNode* stmt = node->right;
+                while (stmt != NULL){
+                    int result = interpret_node(stmt);
+                    //-999999 spec val
+                    if (result==-999999) {
+                        return 0;
+                    }
+                    stmt = stmt->next;
+                }
+            }
+            return 0;
+        }
+
+        case NODE_BREAK: {
+            return -999999;
+        }
     }
 
     return 0;  // To satisfy compiler
@@ -689,6 +797,7 @@ int interpret_node(ASTNode* node) {
 
 // Main interpreter function
 void interpret(const char* input) {
+    clock_t start = clock();
     // Initialize interpreter
     source = (char*)input;
     pos = 0;
@@ -705,6 +814,10 @@ void interpret(const char* input) {
         interpret_node(node);
         free_ast(node);
     }
+
+    clock_t end = clock();
+    double cpu_time_used = ((double)(end-start))/CLOCKS_PER_SEC;
+    printf("execution time: %f seconds\n", cpu_time_used);
 }
 
 char* read_pavo_file(const char* filename){

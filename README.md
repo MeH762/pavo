@@ -51,3 +51,6 @@ compile the source code, and run this:
 ```bash
 ./pavo <filename>.pavo
 ```
+
+## Feedback:
+This is a freshman project, and it is nowhere near finished. If you have any suggestions, tips, or if you just want to help out, feel free to reach out!

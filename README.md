@@ -37,5 +37,5 @@ loop i < 9 {
 let k := {
    let l := 12;
    return l + x;
-}
+};
 ```

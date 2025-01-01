@@ -5,6 +5,7 @@ Pavo is a simple interpreted programming language created as a learning project.
 ## Features:
 - arithmetic operations: +, -
 - logical operations: and (&), or (|), not (!)
+- relational operators: !=, ==, <, >
 - variable assignment, reassignment and usage (all variables are global)
 - if statements
 - simple loops
@@ -27,7 +28,7 @@ if !a {
 }
 
 #logical operations:
-let p := 0 | 1;
+let p := x == 3
 let q := p & 1;
 q = !q;
 

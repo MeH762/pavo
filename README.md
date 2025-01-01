@@ -45,3 +45,9 @@ let k := {
    return l + x;
 };
 ```
+
+## How to run:
+compile the source code, and run this:
+```bash
+./pavo <filename>.pavo
+```
